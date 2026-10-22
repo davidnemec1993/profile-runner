@@ -8,7 +8,7 @@ static class Runner
 {
     // The child shares this console, so Ctrl+C reaches it directly and it shuts down gracefully;
     // this process only ignores the first Ctrl+C and kills the process tree on the second.
-    public static async Task<int> RunAsync(ProjectInfo project, LaunchProfile? profile, string solutionConfiguration)
+    public static async Task<int> RunAsync(ProjectInfo project, LaunchProfile? profile, string solutionConfiguration, bool profiling = false)
     {
         var startInfo = new ProcessStartInfo("dotnet") { WorkingDirectory = project.Directory };
         startInfo.ArgumentList.Add("run");
@@ -22,11 +22,26 @@ static class Runner
             startInfo.ArgumentList.Add(profile.Name);
         }
 
-        AnsiConsole.MarkupLine($"[grey]> dotnet {Markup.Escape(string.Join(' ', startInfo.ArgumentList.Select(Quote)))}[/]");
-        AnsiConsole.MarkupLine("[grey]Ctrl+C stops the application, a second Ctrl+C kills it.[/]");
+        // "dotnet run -e" sets the variable only for the app, so the CLI and build processes do not connect to the monitor.
+        var monitorPort = profiling ? CounterMonitor.NewPortName() : null;
+        if (monitorPort is not null)
+        {
+            startInfo.ArgumentList.Add("-e");
+            startInfo.ArgumentList.Add($"DOTNET_DiagnosticPorts={monitorPort},nosuspend");
+        }
+
+        var profileLabel = profile is null ? "" : $" [grey]·[/] [yellow]{Markup.Escape(profile.Name)}[/]";
+        AnsiConsole.Write(new Rule($":rocket: [bold aqua]{Markup.Escape(project.Name)}[/]{profileLabel}").LeftJustified().RuleStyle("grey"));
+        AnsiConsole.MarkupLine($"[grey]$ dotnet {Markup.Escape(string.Join(' ', startInfo.ArgumentList.Select(Quote)))}[/]");
+        AnsiConsole.MarkupLine("[grey]Press[/] [bold]Ctrl+C[/] [grey]to stop the application, twice to kill it.[/]");
         AnsiConsole.WriteLine();
 
         using var process = Process.Start(startInfo)!;
+        if (monitorPort is not null)
+        {
+            CounterMonitor.OpenWindow(monitorPort, process, project.Name);
+        }
+
         var stopRequests = 0;
 
         void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)

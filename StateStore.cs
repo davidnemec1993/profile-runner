@@ -8,6 +8,8 @@ sealed class SolutionState
 
     public string? Configuration { get; set; }
 
+    public bool Profiling { get; set; }
+
     public Dictionary<string, string> Profiles { get; set; } = [];
 }
 

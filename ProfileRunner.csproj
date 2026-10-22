@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Version>0.1.0</Version>
+    <Version>0.1.3</Version>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>prun</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
@@ -14,6 +14,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Diagnostics.NETCore.Client" Version="0.2.750501" />
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="4.0.0" />
     <PackageReference Include="Spectre.Console" Version="0.55.0" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>

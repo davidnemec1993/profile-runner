@@ -41,6 +41,10 @@ If omitted, the tool uses the last selection or its default. Use `prun --help` f
 In the menu, **Start without debugging** runs the selection. Ctrl+C stops the application gracefully;
 a second Ctrl+C kills the process tree. After the application exits, press any key to return to the menu.
 
+**Enable profiling** (Windows) opens a second window next to the application with live runtime counters
+(CPU, GC, heap, allocation rate, thread pool, exceptions, and ASP.NET Core request counters), updated every
+second. The setting is remembered per solution. Direct runs (`--project`) do not profile.
+
 ## Behavior
 
 - Reads `.sln` and `.slnx` files. Lists runnable projects with an `Exe`/`WinExe` output type, the
@@ -52,6 +56,8 @@ a second Ctrl+C kills the process tree. After the application exits, press any k
   `<BuildType>` in `.slnx`).
 - Opens the browser for `launchBrowser: true` once the application URL accepts connections.
 - Runs the application with the project directory as its working directory.
+- With profiling on, passes `-e DOTNET_DiagnosticPorts=<pipe>,nosuspend` to `dotnet run`, so only the
+  application connects to the profiling window, which reads its EventCounters over EventPipe.
 - Remembers the last project, profile per project, and configuration per solution in
   `LocalApplicationData/ProfileRunner/state.json` (OS-specific local app-data directory). With no
   saved selection, it uses the profile last selected in Visual Studio (`ActiveDebugProfile` in

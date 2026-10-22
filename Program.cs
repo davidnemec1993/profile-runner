@@ -1,6 +1,15 @@
 using ProfileRunner;
 using Spectre.Console;
 
+// UTF-8 so Spectre.Console draws Unicode borders and icons instead of ASCII fallbacks.
+Console.OutputEncoding = System.Text.Encoding.UTF8;
+
+// Internal: the profiling window that Runner opens next to the running application.
+if (args is ["--monitor", var monitorPort, var appProcessId, var monitorTitle])
+{
+    return await CounterMonitor.RunAsync(monitorPort, int.Parse(appProcessId), monitorTitle);
+}
+
 string? target = null;
 string? projectName = null;
 string? profileName = null;
@@ -112,17 +121,22 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
         profile = FindProfile(project, profile?.Name) ?? DefaultProfile(project, state);
 
         AnsiConsole.Clear();
-        RenderSelection(solution, project, profile, configuration);
+        RenderSelection(solution, project, profile, configuration, state.Profiling);
 
-        var actions = Enum.GetValues<MenuAction>().Where(action => action != MenuAction.SelectProfile || project.Profiles.Count > 0);
-        switch (AnsiConsole.Prompt(new SelectionPrompt<MenuAction>().UseConverter(Label).AddChoices(actions)))
+        // The profiling window is opened through the Windows shell.
+        var actions = Enum.GetValues<MenuAction>().Where(action =>
+            (action != MenuAction.SelectProfile || project.Profiles.Count > 0)
+            && (action != MenuAction.ToggleProfiling || OperatingSystem.IsWindows()));
+        switch (AnsiConsole.Prompt(Menu<MenuAction>("[grey]What next?[/]").UseConverter(action => Label(action, state.Profiling)).AddChoices(actions)))
         {
             case MenuAction.Start:
                 Remember();
                 AnsiConsole.Clear();
-                var exitCode = await Runner.RunAsync(project, profile, configuration);
+                var exitCode = await Runner.RunAsync(project, profile, configuration, state.Profiling && OperatingSystem.IsWindows());
                 AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine($"[grey]Process exited with code {exitCode}. Press any key to return to the menu.[/]");
+                var status = exitCode == 0 ? "[green]:check_mark_button: Exited with code 0[/]" : $"[red]:cross_mark: Exited with code {exitCode}[/]";
+                AnsiConsole.Write(new Rule(status).LeftJustified().RuleStyle("grey"));
+                AnsiConsole.MarkupLine("[grey]Press any key to return to the menu.[/]");
                 while (Console.KeyAvailable)
                 {
                     Console.ReadKey(intercept: true);
@@ -133,8 +147,7 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
 
             case MenuAction.SelectProject:
                 var current = project;
-                project = AnsiConsole.Prompt(new SelectionPrompt<ProjectInfo>()
-                    .Title("Startup project")
+                project = AnsiConsole.Prompt(Menu<ProjectInfo>(":package: Startup project")
                     .PageSize(20)
                     .EnableSearch()
                     .UseConverter(p => $"{Marker(p.Name == current.Name)}{Markup.Escape(p.Name)} [grey]{p.Profiles.Count} profile(s)[/]")
@@ -144,8 +157,7 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
 
             case MenuAction.SelectProfile:
                 var currentProfile = profile;
-                profile = AnsiConsole.Prompt(new SelectionPrompt<LaunchProfile>()
-                    .Title($"Launch profile of {Markup.Escape(project.Name)}")
+                profile = AnsiConsole.Prompt(Menu<LaunchProfile>($":compass: Launch profile of [aqua]{Markup.Escape(project.Name)}[/]")
                     .PageSize(20)
                     .UseConverter(p => $"{Marker(p.Name == currentProfile?.Name)}{Markup.Escape(p.Name)} [grey]{Markup.Escape(p.FirstApplicationUrl ?? "")}[/]")
                     .AddChoices(project.Profiles));
@@ -153,10 +165,13 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
 
             case MenuAction.SelectConfiguration:
                 var currentConfiguration = configuration;
-                configuration = AnsiConsole.Prompt(new SelectionPrompt<string>()
-                    .Title("Solution configuration")
+                configuration = AnsiConsole.Prompt(Menu<string>(":wrench: Solution configuration")
                     .UseConverter(c => $"{Marker(c == currentConfiguration)}{Markup.Escape(c)}")
                     .AddChoices(solution.Configurations));
+                break;
+
+            case MenuAction.ToggleProfiling:
+                state.Profiling = !state.Profiling;
                 break;
 
             case MenuAction.Exit:
@@ -179,38 +194,54 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
     }
 }
 
-static void RenderSelection(SolutionInfo solution, ProjectInfo project, LaunchProfile? profile, string configuration)
+static void RenderSelection(SolutionInfo solution, ProjectInfo project, LaunchProfile? profile, string configuration, bool profiling)
 {
-    AnsiConsole.Write(new Rule($"[bold]{Markup.Escape(solution.Name)}[/]").LeftJustified());
+    AnsiConsole.Write(new Rule(":rocket: [bold aqua]ProfileRunner[/]").LeftJustified().RuleStyle("grey"));
+    AnsiConsole.WriteLine();
 
     var projectConfiguration = project.ProjectConfiguration(configuration);
     var grid = new Grid().AddColumn(new GridColumn().PadRight(3)).AddColumn();
-    grid.AddRow("[grey]Startup project[/]", $"[bold]{Markup.Escape(project.Name)}[/]");
-    grid.AddRow("[grey]Launch profile[/]", profile is null ? "[grey](none)[/]" : Markup.Escape(profile.Name));
-    grid.AddRow("[grey]Configuration[/]", Markup.Escape(projectConfiguration == configuration ? configuration : $"{configuration} (project: {projectConfiguration})"));
+    grid.AddRow(":package: [grey]Startup project[/]", $"[bold aqua]{Markup.Escape(project.Name)}[/]");
+    grid.AddRow(":compass: [grey]Launch profile[/]", profile is null ? "[grey](none)[/]" : $"[yellow]{Markup.Escape(profile.Name)}[/]");
+    grid.AddRow(":wrench: [grey]Configuration[/]", projectConfiguration == configuration
+        ? $"[magenta]{Markup.Escape(configuration)}[/]"
+        : $"[magenta]{Markup.Escape(configuration)}[/] [grey](project: {Markup.Escape(projectConfiguration)})[/]");
     if (profile?.FirstApplicationUrl is { } url)
     {
-        grid.AddRow("[grey]URL[/]", Markup.Escape(url));
+        grid.AddRow(":globe_with_meridians: [grey]URL[/]", $"[link]{Markup.Escape(url)}[/]");
     }
 
-    AnsiConsole.Write(grid);
+    if (OperatingSystem.IsWindows())
+    {
+        grid.AddRow(":bar_chart: [grey]Profiling[/]", profiling ? "[green]On[/] [grey](counters in a separate window)[/]" : "[grey]Off[/]");
+    }
+
+    AnsiConsole.Write(new Panel(grid)
+        .Header($" :file_folder: [bold]{Markup.Escape(solution.Name)}[/] ")
+        .RoundedBorder()
+        .BorderColor(Color.Grey)
+        .Padding(2, 1));
     AnsiConsole.WriteLine();
 }
 
 static void PrintList(SolutionInfo solution)
 {
     var solutionDirectory = Path.GetDirectoryName(solution.Path)!;
-    var table = new Table().AddColumns("Project", "Launch profiles", "Path");
+    var table = new Table()
+        .Title($":file_folder: [bold]{Markup.Escape(solution.Name)}[/]")
+        .Border(TableBorder.Rounded)
+        .BorderColor(Color.Grey)
+        .AddColumns(":package: [bold]Project[/]", ":compass: [bold]Launch profiles[/]", "[bold]Path[/]");
     foreach (var project in solution.Projects)
     {
         table.AddRow(
-            Markup.Escape(project.Name),
-            Markup.Escape(string.Join(", ", project.Profiles.Select(p => p.Name))),
-            Markup.Escape(Path.GetRelativePath(solutionDirectory, project.Path)));
+            $"[aqua]{Markup.Escape(project.Name)}[/]",
+            $"[yellow]{Markup.Escape(string.Join(", ", project.Profiles.Select(p => p.Name)))}[/]",
+            $"[grey]{Markup.Escape(Path.GetRelativePath(solutionDirectory, project.Path))}[/]");
     }
 
     AnsiConsole.Write(table);
-    AnsiConsole.MarkupLine($"Configurations: {Markup.Escape(string.Join(", ", solution.Configurations))}");
+    AnsiConsole.MarkupLine($":wrench: [grey]Configurations:[/] [magenta]{Markup.Escape(string.Join(", ", solution.Configurations))}[/]");
 }
 
 static string? ResolveSolution(string target, bool interactive)
@@ -240,8 +271,7 @@ static string? ResolveSolution(string target, bool interactive)
         case 1:
             return solutions[0];
         case > 1 when interactive:
-            return AnsiConsole.Prompt(new SelectionPrompt<string>()
-                .Title("Solution")
+            return AnsiConsole.Prompt(Menu<string>(":file_folder: Solution")
                 .UseConverter(file => Markup.Escape(Path.GetFileName(file)))
                 .AddChoices(solutions));
         default:
@@ -266,20 +296,24 @@ static string DefaultConfiguration(SolutionInfo solution, SolutionState state) =
     ?? solution.Configurations.FirstOrDefault(c => c == "Debug")
     ?? solution.Configurations[0];
 
-static string Marker(bool selected) => selected ? "[green]>[/] " : "  ";
+static SelectionPrompt<T> Menu<T>(string title) where T : notnull =>
+    new SelectionPrompt<T>().Title(title).HighlightStyle(new Style(Color.Aqua, decoration: Decoration.Bold));
 
-static string Label(MenuAction action) => action switch
+static string Marker(bool selected) => selected ? "[green]●[/] " : "[grey]○[/] ";
+
+static string Label(MenuAction action, bool profiling) => action switch
 {
-    MenuAction.Start => "[green]Start without debugging[/]",
-    MenuAction.SelectProject => "Change startup project",
-    MenuAction.SelectProfile => "Change launch profile",
-    MenuAction.SelectConfiguration => "Change configuration",
-    _ => "Exit",
+    MenuAction.Start => ":rocket: [green]Start without debugging[/]",
+    MenuAction.SelectProject => ":package: Change startup project",
+    MenuAction.SelectProfile => ":compass: Change launch profile",
+    MenuAction.SelectConfiguration => ":wrench: Change configuration",
+    MenuAction.ToggleProfiling => profiling ? ":bar_chart: Disable profiling" : ":bar_chart: Enable profiling",
+    _ => ":door: Exit",
 };
 
 static int Fail(string message)
 {
-    AnsiConsole.MarkupLine($"[red]{Markup.Escape(message)}[/]");
+    AnsiConsole.MarkupLine($"[red]:cross_mark: {Markup.Escape(message)}[/]");
     return 1;
 }
 
@@ -301,5 +335,6 @@ enum MenuAction
     SelectProject,
     SelectProfile,
     SelectConfiguration,
+    ToggleProfiling,
     Exit,
 }
