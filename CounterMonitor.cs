@@ -4,6 +4,7 @@ using System.Diagnostics.Tracing;
 using Microsoft.Diagnostics.NETCore.Client;
 using Microsoft.Diagnostics.Tracing;
 using Spectre.Console;
+using Spectre.Console.Rendering;
 
 namespace ProfileRunner;
 
@@ -102,7 +103,7 @@ static class CounterMonitor
         exited.Cancel();
     }
 
-    static Rows Render(string title, ConcurrentDictionary<string, Counter> counters, bool running)
+    static IRenderable Render(string title, ConcurrentDictionary<string, Counter> counters, bool running)
     {
         var status = running ? "[green]● live[/]" : "[grey]○ exited[/]";
         // Two counters per row keep System.Runtime (about 30 counters) within a default-sized window.
@@ -129,7 +130,7 @@ static class CounterMonitor
             table.AddRow("[grey]Waiting for the first values...[/]", "", "", "");
         }
 
-        return new Rows(Banner.Create("PROFILER"), table);
+        return Banner.Create("PROFILER") is { } banner ? new Rows(banner, table) : table;
 
         static string Name(Counter counter) => Markup.Escape(counter.DisplayName);
 

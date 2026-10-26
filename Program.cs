@@ -196,8 +196,7 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
 
 static void RenderSelection(SolutionInfo solution, ProjectInfo project, LaunchProfile? profile, string configuration, bool profiling)
 {
-    AnsiConsole.Write(Banner.Create("PRUN"));
-    AnsiConsole.WriteLine();
+    Banner.Write("PRUN");
     AnsiConsole.Write(new Rule(":rocket: [bold aqua]ProfileRunner[/]").LeftJustified().RuleStyle("grey"));
     AnsiConsole.WriteLine();
 
