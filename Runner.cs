@@ -30,6 +30,8 @@ static class Runner
             startInfo.ArgumentList.Add($"DOTNET_DiagnosticPorts={monitorPort},nosuspend");
         }
 
+        AnsiConsole.Write(Banner.Create("RUN"));
+        AnsiConsole.WriteLine();
         var profileLabel = profile is null ? "" : $" [grey]·[/] [yellow]{Markup.Escape(profile.Name)}[/]";
         AnsiConsole.Write(new Rule($":rocket: [bold aqua]{Markup.Escape(project.Name)}[/]{profileLabel}").LeftJustified().RuleStyle("grey"));
         AnsiConsole.MarkupLine($"[grey]$ dotnet {Markup.Escape(string.Join(' ', startInfo.ArgumentList.Select(Quote)))}[/]");

@@ -69,7 +69,7 @@ static class CounterMonitor
             };
 
             var processing = Task.Run(source.Process);
-            // Crops the bottom when the window is too small, so the title and header stay visible.
+            // Crops the bottom when the window is too small, so the banner, title and header stay visible.
             await AnsiConsole.Live(Render(title, counters, running: true))
                 .Overflow(VerticalOverflow.Ellipsis)
                 .Cropping(VerticalOverflowCropping.Bottom)
@@ -102,7 +102,7 @@ static class CounterMonitor
         exited.Cancel();
     }
 
-    static Table Render(string title, ConcurrentDictionary<string, Counter> counters, bool running)
+    static Rows Render(string title, ConcurrentDictionary<string, Counter> counters, bool running)
     {
         var status = running ? "[green]● live[/]" : "[grey]○ exited[/]";
         // Two counters per row keep System.Runtime (about 30 counters) within a default-sized window.
@@ -129,7 +129,7 @@ static class CounterMonitor
             table.AddRow("[grey]Waiting for the first values...[/]", "", "", "");
         }
 
-        return table;
+        return new Rows(Banner.Create("PROFILER"), table);
 
         static string Name(Counter counter) => Markup.Escape(counter.DisplayName);
 
