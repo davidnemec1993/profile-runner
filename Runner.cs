@@ -8,7 +8,7 @@ static class Runner
 {
     // The child shares this console, so Ctrl+C reaches it directly and it shuts down gracefully;
     // this process only ignores the first Ctrl+C and kills the process tree on the second.
-    public static async Task<int> RunAsync(ProjectInfo project, LaunchProfile? profile, string solutionConfiguration, bool profiling = false)
+    public static async Task<int> RunAsync(ProjectInfo project, LaunchProfile? profile, string solutionConfiguration, bool profiling = false, bool skipRestore = false)
     {
         var startInfo = new ProcessStartInfo("dotnet") { WorkingDirectory = project.Directory };
         startInfo.ArgumentList.Add("run");
@@ -16,6 +16,11 @@ static class Runner
         startInfo.ArgumentList.Add(project.Path);
         startInfo.ArgumentList.Add("--configuration");
         startInfo.ArgumentList.Add(project.ProjectConfiguration(solutionConfiguration));
+        if (skipRestore)
+        {
+            startInfo.ArgumentList.Add("--no-restore");
+        }
+
         if (profile is not null)
         {
             startInfo.ArgumentList.Add("--launch-profile");

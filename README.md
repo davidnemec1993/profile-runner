@@ -32,10 +32,11 @@ prun path/to/solution.sln                         # choose a solution file
 prun path/to/solution-directory                   # choose a solution directory
 prun --list                                       # list runnable projects and configurations
 prun --project ProjectName --launch-profile "Profile Name" --configuration Release
+prun --project ProjectName --no-restore           # skip NuGet restore for faster startup
 ```
 
 Direct-run options also have short forms: `-p` for `--project`, `-lp` for `--launch-profile`,
-and `-c` for `--configuration`. Launch profile and configuration options require a project.
+and `-c` for `--configuration`. Launch profile, configuration and `--no-restore` options require a project.
 If omitted, the tool uses the last selection or its default. Use `prun --help` for usage details.
 
 In the menu, **Start without debugging** runs the selection. Ctrl+C stops the application gracefully;
@@ -44,6 +45,11 @@ a second Ctrl+C kills the process tree. After the application exits, press any k
 **Enable profiling** (Windows) opens a second window next to the application with live runtime counters
 (CPU, GC, heap, allocation rate, thread pool, exceptions, and ASP.NET Core request counters), updated every
 second. The setting is remembered per solution. Direct runs (`--project`) do not profile.
+
+**Skip restore** passes `--no-restore` to `dotnet run`, which still builds but skips the NuGet restore
+(slow for large solutions such as Aspire AppHosts). The setting is remembered per solution. Turn restore
+back on after changing package references, or the build fails on missing or stale assets. Direct runs use
+the `--no-restore` flag instead of the saved setting.
 
 ## Behavior
 

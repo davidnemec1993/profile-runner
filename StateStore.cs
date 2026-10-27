@@ -10,6 +10,8 @@ sealed class SolutionState
 
     public bool Profiling { get; set; }
 
+    public bool SkipRestore { get; set; }
+
     public Dictionary<string, string> Profiles { get; set; } = [];
 }
 

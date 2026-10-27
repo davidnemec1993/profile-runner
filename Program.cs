@@ -15,6 +15,7 @@ string? projectName = null;
 string? profileName = null;
 string? configurationName = null;
 var listOnly = false;
+var skipRestore = false;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -26,6 +27,9 @@ for (var i = 0; i < args.Length; i++)
             return 0;
         case "--list":
             listOnly = true;
+            continue;
+        case "--no-restore":
+            skipRestore = true;
             continue;
         case "-p" or "--project" or "-lp" or "--launch-profile" or "-c" or "--configuration":
             if (++i >= args.Length)
@@ -57,9 +61,9 @@ for (var i = 0; i < args.Length; i++)
     target = argument;
 }
 
-if (projectName is null && (profileName ?? configurationName) is not null)
+if (projectName is null && ((profileName ?? configurationName) is not null || skipRestore))
 {
-    return Fail("--launch-profile and --configuration require --project.");
+    return Fail("--launch-profile, --configuration and --no-restore require --project.");
 }
 
 var interactive = AnsiConsole.Profile.Capabilities.Interactive;
@@ -97,7 +101,7 @@ if (projectName is not null)
         return Fail($"Launch profile '{profileName}' not found in {project.Name}. Profiles: {string.Join(", ", project.Profiles.Select(p => p.Name))}.");
     }
 
-    return await Runner.RunAsync(project, profile, configurationName ?? DefaultConfiguration(solution, state));
+    return await Runner.RunAsync(project, profile, configurationName ?? DefaultConfiguration(solution, state), skipRestore: skipRestore);
 }
 
 if (!interactive)
@@ -121,18 +125,18 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
         profile = FindProfile(project, profile?.Name) ?? DefaultProfile(project, state);
 
         AnsiConsole.Clear();
-        RenderSelection(solution, project, profile, configuration, state.Profiling);
+        RenderSelection(solution, project, profile, configuration, state.Profiling, state.SkipRestore);
 
         // The profiling window is opened through the Windows shell.
         var actions = Enum.GetValues<MenuAction>().Where(action =>
             (action != MenuAction.SelectProfile || project.Profiles.Count > 0)
             && (action != MenuAction.ToggleProfiling || OperatingSystem.IsWindows()));
-        switch (AnsiConsole.Prompt(Menu<MenuAction>("[grey]What next?[/]").UseConverter(action => Label(action, state.Profiling)).AddChoices(actions)))
+        switch (AnsiConsole.Prompt(Menu<MenuAction>("[grey]What next?[/]").UseConverter(action => Label(action, state)).AddChoices(actions)))
         {
             case MenuAction.Start:
                 Remember();
                 AnsiConsole.Clear();
-                var exitCode = await Runner.RunAsync(project, profile, configuration, state.Profiling && OperatingSystem.IsWindows());
+                var exitCode = await Runner.RunAsync(project, profile, configuration, state.Profiling && OperatingSystem.IsWindows(), state.SkipRestore);
                 AnsiConsole.WriteLine();
                 var status = exitCode == 0 ? "[green]:check_mark_button: Exited with code 0[/]" : $"[red]:cross_mark: Exited with code {exitCode}[/]";
                 AnsiConsole.Write(new Rule(status).LeftJustified().RuleStyle("grey"));
@@ -174,6 +178,10 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
                 state.Profiling = !state.Profiling;
                 break;
 
+            case MenuAction.ToggleRestore:
+                state.SkipRestore = !state.SkipRestore;
+                break;
+
             case MenuAction.Exit:
                 return 0;
         }
@@ -194,7 +202,7 @@ static async Task<int> RunMenuAsync(SolutionInfo solution, SolutionState state)
     }
 }
 
-static void RenderSelection(SolutionInfo solution, ProjectInfo project, LaunchProfile? profile, string configuration, bool profiling)
+static void RenderSelection(SolutionInfo solution, ProjectInfo project, LaunchProfile? profile, string configuration, bool profiling, bool skipRestore)
 {
     Banner.Write("PRUN");
     AnsiConsole.Write(new Rule(":rocket: [bold aqua]ProfileRunner[/]").LeftJustified().RuleStyle("grey"));
@@ -216,6 +224,8 @@ static void RenderSelection(SolutionInfo solution, ProjectInfo project, LaunchPr
     {
         grid.AddRow(":bar_chart: [grey]Profiling[/]", profiling ? "[green]On[/] [grey](counters in a separate window)[/]" : "[grey]Off[/]");
     }
+
+    grid.AddRow(":inbox_tray: [grey]Restore[/]", skipRestore ? "[yellow]Off[/] [grey](--no-restore)[/]" : "[green]On[/]");
 
     AnsiConsole.Write(new Panel(grid)
         .Header($" :file_folder: [bold]{Markup.Escape(solution.Name)}[/] ")
@@ -302,13 +312,14 @@ static SelectionPrompt<T> Menu<T>(string title) where T : notnull =>
 
 static string Marker(bool selected) => selected ? "[green]●[/] " : "[grey]○[/] ";
 
-static string Label(MenuAction action, bool profiling) => action switch
+static string Label(MenuAction action, SolutionState state) => action switch
 {
     MenuAction.Start => ":rocket: [green]Start without debugging[/]",
     MenuAction.SelectProject => ":package: Change startup project",
     MenuAction.SelectProfile => ":compass: Change launch profile",
     MenuAction.SelectConfiguration => ":wrench: Change configuration",
-    MenuAction.ToggleProfiling => profiling ? ":bar_chart: Disable profiling" : ":bar_chart: Enable profiling",
+    MenuAction.ToggleProfiling => state.Profiling ? ":bar_chart: Disable profiling" : ":bar_chart: Enable profiling",
+    MenuAction.ToggleRestore => state.SkipRestore ? ":inbox_tray: Enable restore" : ":inbox_tray: Skip restore",
     _ => ":door: Exit",
 };
 
@@ -324,7 +335,7 @@ static void PrintUsage() => Console.WriteLine("""
     Usage:
       prun [solution|directory]                     interactive menu (default: current directory)
       prun [solution|directory] --list              list runnable projects, profiles and configurations
-      prun [solution|directory] -p <project> [-lp <launch profile>] [-c <configuration>]
+      prun [solution|directory] -p <project> [-lp <launch profile>] [-c <configuration>] [--no-restore]
                                                     run directly; missing values = last selection
 
     Ctrl+C stops the running application, a second Ctrl+C kills it.
@@ -337,5 +348,6 @@ enum MenuAction
     SelectProfile,
     SelectConfiguration,
     ToggleProfiling,
+    ToggleRestore,
     Exit,
 }
